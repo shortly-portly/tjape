@@ -9,7 +9,8 @@
 
 ; Boundaries
 (defprotocol Database
-  (query-database [db sql]))
+  (query-database [db sql])
+  (create-entity [db entity params]))
 
 (extend-protocol Database
   duct.database.sql.Boundary
@@ -19,6 +20,17 @@
         [nil result])
       (catch Exception e
         ["Something went wrong with the query", nil]))))
+
+  (comment
+
+  (create-entity [{:keys [spec]} entity params]
+    (try
+      [nil, (-> (jdbc/insert! db entity params) ffirst val)]
+      (catch Exception e
+        (let [[text table column] (re-find #"UNIQUE constraint failed:\s(\w*)\.(\w*)" (.getMessage e))]
+          [{(keyword column) "Has already been taken"} nil]))))
+
+  )
 
 (defn convert-sql-params [sql params]
   "This function attempts to convert a set of parameters. It takes a really simple approach
@@ -33,6 +45,10 @@
 
     [nil (concat [(first sql)] (vec sql-params))]))
 
+(comment
+(defn validate-params [params schema]
+  (st/validate params schema {:strip true})))
+
 ; Prep Keys
 (defmethod ig/prep-key :tjape.handler.generic/list [_ config]
   (merge
@@ -42,6 +58,10 @@
 (defmethod ig/prep-key :tjape.handler.generic/detail [_ config]
   (merge
    {:db (ig/ref :duct.database/sql)} config))
+
+(defmethod ig/prep-key :tjape.handler.generic/new [_ config]
+  (merge
+   {:view (ig/ref :tjape.view.generic/new)} config))
 
 ; Initialise Keys
 (defmethod ig/init-key :tjape.handler.generic/list [_ {:keys [db sql view]}]
@@ -60,3 +80,21 @@
       (if error
         [::response/ok (view/error error)]
         [::response/ok (view (first result))]))))
+
+(defmethod ig/init-key :tjape.handler.generic/new [_ {:keys [fields view]}]
+  (fn [{:keys [flash]}]
+    (let [data flash]
+      [::response/ok (view fields data)])))
+
+(comment
+
+(defmethod ig/init-key :tjape.handler.generic/post [_ {:keys [db schema success-route error-route]}]
+  (fn [{:keys [params]}]
+    (let [[errors params] (validate-param params schema)
+          [errors result] (if-not errors (create-entity db params) [errors nil])]
+    (if errors
+      (-> (ring/redirect error-route)
+          (assoc :flash (assoc params :errors errors)))
+      (do
+        (ring/redirect success-route))))))
+)

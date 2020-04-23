@@ -37,4 +37,15 @@
               (for [entry data]
                 [:tr
                 (for [[k x] entry]
-                 [:td x])]))])))
+                  [:td x])]))])))
+
+(defmethod ig/init-key :tjape.view.generic/new [_ _]
+  (fn [fields data]
+    (bs/layout
+     [:div
+      [:h1 "View"]
+
+      (bs/form "/wibble"
+               data
+               (for [field fields]
+                 (bs/text-input (name field) field (field data))))])))
