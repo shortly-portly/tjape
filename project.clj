@@ -7,5 +7,6 @@
                  [duct/core "0.7.0"]
                  [duct/module.ataraxy "0.3.0"]
                  [duct/module.sql "0.5.0"]
-                 ]
+                 [funcool/struct "1.3.0"]
+                ]
   :repl-options {:init-ns tjape.core})

@@ -2,6 +2,7 @@
   (:require [ataraxy.response :as response]
             [clojure.java.jdbc :as jdbc]
             duct.database.sql
+            [struct.core :as st]
             [integrant.core :as ig]
             [ring.util.response :as ring]
             [tjape.view.generic :as view])
@@ -17,20 +18,24 @@
   (query-database [{:keys [spec]} sql]
     (try
       (let [result (jdbc/query spec sql)]
+        (println result)
         [nil result])
       (catch Exception e
-        ["Something went wrong with the query", nil]))))
+        ["Something went wrong with the query", nil])))
 
-  (comment
-
-  (create-entity [{:keys [spec]} entity params]
+  (create-entity [{db :spec} entity params]
+    (println "sql params :" params)
+    (println "db :" db)
+    (println "entity :" entity)
     (try
       [nil, (-> (jdbc/insert! db entity params) ffirst val)]
       (catch Exception e
+        (println "Exception e:" e)
         (let [[text table column] (re-find #"UNIQUE constraint failed:\s(\w*)\.(\w*)" (.getMessage e))]
-          [{(keyword column) "Has already been taken"} nil]))))
+          (if text
+            [{(keyword column) "Has already been taken"} nil]
+            (throw e)))))))
 
-  )
 
 (defn convert-sql-params [sql params]
   "This function attempts to convert a set of parameters. It takes a really simple approach
@@ -45,9 +50,12 @@
 
     [nil (concat [(first sql)] (vec sql-params))]))
 
-(comment
 (defn validate-params [params schema]
-  (st/validate params schema {:strip true})))
+  "This function validates the input parameters against a schema. If no
+   spec is given then return the parameters minus the anti CSRF token."
+  (if schema
+    (st/validate params schema {:strip true})
+    [nil, (dissoc params :__anti-forgery-token)]))
 
 ; Prep Keys
 (defmethod ig/prep-key :tjape.handler.generic/list [_ config]
@@ -62,6 +70,10 @@
 (defmethod ig/prep-key :tjape.handler.generic/new [_ config]
   (merge
    {:view (ig/ref :tjape.view.generic/new)} config))
+
+(defmethod ig/prep-key :tjape.handler.generic/post [_ config]
+  (merge
+   {:db (ig/ref :duct.database/sql)} config))
 
 ; Initialise Keys
 (defmethod ig/init-key :tjape.handler.generic/list [_ {:keys [db sql view]}]
@@ -81,20 +93,25 @@
         [::response/ok (view/error error)]
         [::response/ok (view (first result))]))))
 
-(defmethod ig/init-key :tjape.handler.generic/new [_ {:keys [fields view]}]
+(defmethod ig/init-key :tjape.handler.generic/new [_ {:keys [fields view submit-url]}]
   (fn [{:keys [flash]}]
     (let [data flash]
-      [::response/ok (view fields data)])))
+      (println data)
+      [::response/ok (view fields data submit-url)])))
 
-(comment
 
-(defmethod ig/init-key :tjape.handler.generic/post [_ {:keys [db schema success-route error-route]}]
+(defmethod ig/init-key :tjape.handler.generic/post [_ {:keys [db entity schema success-route error-route]}]
+  (println "db :" db)
+  (println "entity :" entity)
+  (println "schema :" schema)
+  (println "success-route :" success-route)
+  (println "error-route :" error-route)
   (fn [{:keys [params]}]
-    (let [[errors params] (validate-param params schema)
-          [errors result] (if-not errors (create-entity db params) [errors nil])]
+    (println "Post called")
+    (let [[errors params] (validate-params params schema)
+          [errors result] (if-not errors (create-entity db entity params) [errors nil])]
     (if errors
       (-> (ring/redirect error-route)
           (assoc :flash (assoc params :errors errors)))
       (do
         (ring/redirect success-route))))))
-)

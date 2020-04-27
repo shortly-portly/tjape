@@ -40,12 +40,14 @@
                   [:td x])]))])))
 
 (defmethod ig/init-key :tjape.view.generic/new [_ _]
-  (fn [fields data]
+  (fn [fields data submit-url]
     (bs/layout
      [:div
       [:h1 "View"]
 
-      (bs/form "/wibble"
+      (bs/form submit-url
                data
+               [:div
                (for [field fields]
-                 (bs/text-input (name field) field (field data))))])))
+                 (bs/text-input (name field) field (field data)))
+               (bs/submit-btn "New")])])))
